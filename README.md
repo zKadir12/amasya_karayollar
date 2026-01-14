@@ -16,11 +16,11 @@ Kullanılan Teknolojiler
 Projeyi bilgisayarınızda çalıştırmak için şu adımları izleyin:
 Veritabanını Kurun:
     * Klasördeki `veritabani.sql` dosyasını açın.
-    * Tüm kodları kopyalayıp SQL Server Management Studio'da (SSMS) yeni bir sorgu ekranına yapıştırın ve çalıştırın.
+    * Tüm kodları kopyalayıp SQL Server Management Studio'da yeni bir sorgu ekranına yapıştırın ve çalıştırın.
     * Veritabanı ve tablolar otomatik oluşacaktır.
 Bağlantı Ayarı:
     Visual Studio'da projeyi açın.
-    Kodlardaki `connectionString` (Bağlantı Cümlesi) kısmını kendi bilgisayarınıza göre güncelleyin.
+    Kodlardaki `connectionString` kısmını kendi bilgisayarınıza göre güncelleyin.
     (Örn: `Data Source=.;Initial Catalog=Karayollari;Integrated Security=True`)
 
 Özellikler
