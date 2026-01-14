@@ -7,7 +7,7 @@ Projenin amacı:
 * Toplu taşıma araçlarının anlık konum, hız ve hat bilgilerini takip etmek.
 * Duraklardaki yoğunlukları analiz etmek.
 * SQL sorguları ile performans raporları oluşturmak.
-* Projen temsili ve hayali bir senaryoda gerçekleşmiştir!
+* Proje temsili ve hayali bir senaryoda gerçekleşmiştir!
 
 Kullanılan Teknolojiler
 * **Dil:** C# (.NET Framework)
