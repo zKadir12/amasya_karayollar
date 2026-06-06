@@ -32,6 +32,31 @@ namespace amasya_karayollar
         {
             InitializeComponent();
         }
+
+        private void PlakalariYukle()
+        {
+            string adres = "Data Source=.\\SQLEXPRESS;Initial Catalog=Karayollari;Integrated Security=True";
+
+            using (SqlConnection baglanti = new SqlConnection(adres))
+            {
+                try
+                {
+                    baglanti.Open();
+                    SqlCommand komut = new SqlCommand("SELECT plaka FROM Araçlar ORDER BY plaka ASC", baglanti);
+                    SqlDataReader okuyucu = komut.ExecuteReader();
+
+                    comboBox2.Items.Clear();
+                    while (okuyucu.Read())
+                    {
+                        comboBox2.Items.Add(okuyucu["plaka"].ToString());
+                    }
+                }
+                catch (Exception hata)
+                {
+                    MessageBox.Show("Hata: " + hata.Message);
+                }
+            }
+        }
         private void AraclariListele()
         {
             bekleyen_konum.Text = "Bekleyen Araç Konum:";
@@ -427,6 +452,7 @@ INNER JOIN Duraklar D ON B.durak_id = D.durak_id";
             pictureBox3.Invalidate();
 
             AraclariListele();
+            PlakalariYukle();
         }
         // -------------------------------------------------------- LOAD BİTİŞ -----------------------------------------------
         private void Ara_buton_Click(object sender, EventArgs e)
@@ -825,17 +851,20 @@ INNER JOIN Duraklar D ON B.durak_id = D.durak_id";
             }
 
             string adres = "Data Source=.\\SQLEXPRESS;Initial Catalog=Karayollari;Integrated Security=True";
-
             Random rnd = new Random();
 
             using (SqlConnection baglanti = new SqlConnection(adres))
             {
+                SqlTransaction transaction = null;
+
                 try
                 {
                     baglanti.Open();
+                    transaction = baglanti.BeginTransaction();
 
                     DataTable dtAraclar = new DataTable();
                     SqlDataAdapter da = new SqlDataAdapter("SELECT arac_id, anlik_hiz FROM Araçlar", baglanti);
+                    da.SelectCommand.Transaction = transaction;
                     da.Fill(dtAraclar);
 
                     foreach (DataRow satir in dtAraclar.Rows)
@@ -860,25 +889,21 @@ INNER JOIN Duraklar D ON B.durak_id = D.durak_id";
                         {
                             int ek = rnd.Next(-20, 41);
                             yeniHiz = mevcutHiz + ek;
-
                             if (yeniHiz < 0) yeniHiz = 0;
                         }
 
                         int yeniKonum = rnd.Next(1, 35);
-                        if (yeniKonum == 6)
-                        {
-                            yeniKonum++;
-                        }
+                        if (yeniKonum == 6) yeniKonum++;
 
                         string updateSql = "UPDATE Araçlar SET anlik_hiz = @yh, konum = @yk WHERE arac_id = @id";
-                        SqlCommand cmdUpdate = new SqlCommand(updateSql, baglanti);
+                        SqlCommand cmdUpdate = new SqlCommand(updateSql, baglanti, transaction);
                         cmdUpdate.Parameters.AddWithValue("@yh", yeniHiz);
                         cmdUpdate.Parameters.AddWithValue("@yk", yeniKonum);
                         cmdUpdate.Parameters.AddWithValue("@id", id);
                         cmdUpdate.ExecuteNonQuery();
                     }
 
-                    SqlCommand cmdSil = new SqlCommand("TRUNCATE TABLE Bekleyenler", baglanti);
+                    SqlCommand cmdSil = new SqlCommand("TRUNCATE TABLE Bekleyenler", baglanti, transaction);
                     cmdSil.ExecuteNonQuery();
 
                     string ekleSql = @"
@@ -888,14 +913,17 @@ INNER JOIN Duraklar D ON B.durak_id = D.durak_id";
                 INNER JOIN Duraklar D ON A.konum = D.durak_konum
                 WHERE A.anlik_hiz = 0";
 
-                    SqlCommand cmdEkle = new SqlCommand(ekleSql, baglanti);
-                    int bekleyenSayisi = cmdEkle.ExecuteNonQuery();
+                    SqlCommand cmdEkle = new SqlCommand(ekleSql, baglanti, transaction);
+                    cmdEkle.ExecuteNonQuery();
+
+                    transaction.Commit();
 
                     AraclariListele();
-                    MessageBox.Show("Güncelleme Tamamlandı... ");
+                    MessageBox.Show("Güncelleme Tamamlandı...");
                 }
                 catch (Exception hata)
                 {
+                    transaction?.Rollback();
                     MessageBox.Show("Hata: " + hata.Message);
                 }
             }
@@ -911,55 +939,32 @@ INNER JOIN Duraklar D ON B.durak_id = D.durak_id";
                 {
                     baglanti.Open();
 
-                    string sql = @"
-                SELECT DISTINCT E.Label_no 
-                FROM Bekleyenler B 
-                INNER JOIN Etiketler E ON B.durak_id = E.Label_id";
+                    SqlCommand komut = new SqlCommand("AraclariListele", baglanti);
+                    komut.CommandType = CommandType.StoredProcedure;
 
-                    SqlCommand komut = new SqlCommand(sql, baglanti);
                     SqlDataReader okuyucu = komut.ExecuteReader();
 
+                    // 1. result set — bekleyen duraklar
                     while (okuyucu.Read())
                     {
                         int durakNo = Convert.ToInt32(okuyucu["Label_no"]);
-
                         string hedefLabel = "label" + durakNo;
-
                         Control[] bulunanlar = this.Controls.Find(hedefLabel, true);
-
                         if (bulunanlar.Length > 0)
                         {
                             bulunanlar[0].Visible = !bulunanlar[0].Visible;
                         }
-
                         if (zaman == true)
                         {
                             bulunanlar[0].Visible = false;
                             timer1.Stop();
                         }
                     }
-                    okuyucu.Close();
 
-                    string sqlAnaliz = @"
-                    SELECT 
-                        A.hat_no AS [Hat], 
-                        COUNT(A.arac_id) AS [Toplam Araç], 
-                        AVG(A.anlik_hiz) AS [Ort. Hız],
-                        MAX(A.anlik_hiz) AS [Max Hız],
-                        CASE 
-                            WHEN AVG(A.anlik_hiz) < 30 THEN 'Yoğun'
-                            WHEN AVG(A.anlik_hiz) BETWEEN 30 AND 60 THEN 'Akıcı'
-                            ELSE 'Hızlı'
-                        END AS [Durum]
-                    FROM Araçlar A
-                    GROUP BY A.hat_no
-                    HAVING COUNT(A.arac_id) > 0
-                    ORDER BY [Ort. Hız] ASC";
-
-                    SqlDataAdapter da = new SqlDataAdapter(sqlAnaliz, baglanti);
+                    // 2. result set — hat analiz
+                    okuyucu.NextResult();
                     DataTable dt = new DataTable();
-                    da.Fill(dt);
-
+                    dt.Load(okuyucu);
                     dataGridView2.DataSource = dt;
                 }
                 catch (Exception ex)
@@ -1023,6 +1028,7 @@ INNER JOIN Duraklar D ON B.durak_id = D.durak_id";
                         komut.ExecuteNonQuery();
                         MessageBox.Show("Araç başarıyla sisteme eklendi.");
                         AraclariListele();
+                        PlakalariYukle();
                     }
                     catch (Exception ex)
                     {
@@ -1033,6 +1039,57 @@ INNER JOIN Duraklar D ON B.durak_id = D.durak_id";
 
             Plaka_ekle.Clear();
             Hat_ekle.Clear();
+        }
+
+        private void comboBox2_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void button38_Click(object sender, EventArgs e)
+        {
+            if (comboBox2.SelectedItem == null)
+            {
+                MessageBox.Show("Lütfen silmek istediğiniz aracı seçin!");
+                return;
+            }
+
+            string secilenPlaka = comboBox2.SelectedItem.ToString();
+
+            DialogResult onay = MessageBox.Show(
+                secilenPlaka + " plakalı araç silinecek. Emin misiniz?",
+                "Silme Onayı",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning
+            );
+
+            if (onay != DialogResult.Yes) return;
+
+            string adres = "Data Source=.\\SQLEXPRESS;Initial Catalog=Karayollari;Integrated Security=True";
+
+            using (SqlConnection baglanti = new SqlConnection(adres))
+            {
+                try
+                {
+                    baglanti.Open();
+                    SqlCommand komut = new SqlCommand("DELETE FROM Araçlar WHERE plaka = @plaka", baglanti);
+                    komut.Parameters.AddWithValue("@plaka", secilenPlaka);
+                    komut.ExecuteNonQuery();
+
+                    MessageBox.Show(secilenPlaka + " plakalı araç silindi.");
+                    AraclariListele();
+                    PlakalariYukle();
+                }
+                catch (Exception hata)
+                {
+                    MessageBox.Show("Hata: " + hata.Message);
+                }
+            }
+        }
+
+        private void dataGridView2_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+
         }
     }
     public class Komsuluk
